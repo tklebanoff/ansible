@@ -262,7 +262,7 @@ options:
         version_added: "2.5"
     lease:
         description:
-            - Name of the storage domain this virtual machine lease reside on.
+            - Name of the storage domain this virtual machine lease reside on. Pass an empty string to remove the lease.
             - NOTE - Supported since oVirt 4.1.
         version_added: "2.4"
     custom_compatibility_version:
@@ -441,6 +441,24 @@ options:
             nic_gateway:
                 description:
                     - If boot protocol is static, set this gateway to network interface of Virtual Machine.
+            nic_boot_protocol_v6:
+                description:
+                    - Set boot protocol of the network interface of Virtual Machine.
+                choices: ['none', 'dhcp', 'static']
+                version_added: "2.9"
+            nic_ip_address_v6:
+                description:
+                    - If boot protocol is static, set this IP address to network interface of Virtual Machine.
+                version_added: "2.9"
+            nic_netmask_v6:
+                description:
+                    - If boot protocol is static, set this netmask to network interface of Virtual Machine.
+                version_added: "2.9"
+            nic_gateway_v6:
+                description:
+                    - If boot protocol is static, set this gateway to network interface of Virtual Machine.
+                    - For IPv6 addresses the value is an integer in the range of 0-128, which represents the subnet prefix.
+                version_added: "2.9"
             nic_name:
                 description:
                     - Set name to network interface of Virtual Machine.
@@ -467,6 +485,23 @@ options:
             nic_gateway:
                 description:
                     - If boot protocol is static, set this gateway to network interface of Virtual Machine.
+            nic_boot_protocol_v6:
+                description:
+                    - Set boot protocol of the network interface of Virtual Machine. Can be one of C(none), C(dhcp) or C(static).
+                version_added: "2.9"
+            nic_ip_address_v6:
+                description:
+                    - If boot protocol is static, set this IP address to network interface of Virtual Machine.
+                version_added: "2.9"
+            nic_netmask_v6:
+                description:
+                    - If boot protocol is static, set this netmask to network interface of Virtual Machine.
+                version_added: "2.9"
+            nic_gateway_v6:
+                description:
+                    - If boot protocol is static, set this gateway to network interface of Virtual Machine.
+                    - For IPv6 addresses the value is an integer in the range of 0-128, which represents the subnet prefix.
+                version_added: "2.9"
             nic_name:
                 description:
                     - Set name to network interface of Virtual Machine.
@@ -770,7 +805,7 @@ options:
         version_added: "2.8"
     force_migrate:
         description:
-            - "If I(true), the VM will migrate even if it is defined as non-migratable."
+            - If I(true), the VM will migrate when I(placement_policy=user-migratable) but not when I(placement_policy=pinned).
         version_added: "2.8"
         type: bool
     migrate:
@@ -784,6 +819,18 @@ options:
             - NOTE - If there are multiple next run configuration changes on the VM, the first change may get reverted if this option is not passed.
         version_added: "2.8"
         type: bool
+    snapshot_name:
+        description:
+            - "Snapshot to clone VM from."
+            - "Snapshot with description specified should exist."
+            - "You have to specify C(snapshot_vm) parameter with virtual machine name of this snapshot."
+        version_added: "2.9"
+    snapshot_vm:
+        description:
+            - "Source VM to clone VM from."
+            - "VM should have snapshot specified by C(snapshot)."
+            - "If C(snapshot_name) specified C(snapshot_vm) is required."
+        version_added: "2.9"
 
 notes:
     - If VM is in I(UNASSIGNED) or I(UNKNOWN) state before any operation, the module will fail.
@@ -959,6 +1006,16 @@ EXAMPLES = '''
       nic_netmask: 255.255.252.0
       nic_gateway: 10.34.63.254
       nic_on_boot: true
+    # IP version 6 parameters are supported since ansible 2.9
+    - nic_name: eth2
+      nic_boot_protocol_v6: static
+      nic_ip_address_v6: '2620:52:0:2282:b898:1f69:6512:36c5'
+      nic_gateway_v6: '2620:52:0:2282:b898:1f69:6512:36c9'
+      nic_netmask_v6: '120'
+      nic_on_boot: true
+    - nic_name: eth3
+      nic_on_boot: true
+      nic_boot_protocol_v6: dhcp
 
 - name: Run VM with sysprep
   ovirt_vm:
@@ -1141,6 +1198,13 @@ EXAMPLES = '''
         host: myhost
         filename: myvm.ova
         directory: /tmp/
+
+- name: Clone VM from snapshot
+  ovirt_vm:
+    snapshot_vm: myvm
+    snapshot_name: myvm_snap
+    name: myvm_clone
+    state: present
 '''
 
 
@@ -1254,8 +1318,38 @@ class VmsModule(BaseModule):
 
         return disks
 
+    def __get_snapshot(self):
+
+        if self.param('snapshot_vm') is None:
+            return None
+
+        if self.param('snapshot_name') is None:
+            return None
+
+        vms_service = self._connection.system_service().vms_service()
+        vm_id = get_id_by_name(vms_service, self.param('snapshot_vm'))
+        vm_service = vms_service.vm_service(vm_id)
+
+        snaps_service = vm_service.snapshots_service()
+        snaps = snaps_service.list()
+        snap = next(
+            (s for s in snaps if s.description == self.param('snapshot_name')),
+            None
+        )
+        return snap
+
+    def __get_cluster(self):
+        if self.param('cluster') is not None:
+            return self.param('cluster')
+        elif self.param('snapshot_name') is not None and self.param('snapshot_vm') is not None:
+            vms_service = self._connection.system_service().vms_service()
+            vm = search_by_name(vms_service, self.param('snapshot_vm'))
+            return self._connection.system_service().clusters_service().cluster_service(vm.cluster.id).get().name
+
     def build_entity(self):
         template = self.__get_template_with_version()
+        cluster = self.__get_cluster()
+        snapshot = self.__get_snapshot()
 
         disk_attachments = self.__get_storage_domain_and_all_template_disks(template)
 
@@ -1263,8 +1357,8 @@ class VmsModule(BaseModule):
             id=self.param('id'),
             name=self.param('name'),
             cluster=otypes.Cluster(
-                name=self.param('cluster')
-            ) if self.param('cluster') else None,
+                name=cluster
+            ) if cluster else None,
             disk_attachments=disk_attachments,
             template=otypes.Template(
                 id=template.id,
@@ -1296,7 +1390,7 @@ class VmsModule(BaseModule):
                     id=get_id_by_name(
                         service=self._connection.system_service().storage_domains_service(),
                         name=self.param('lease')
-                    )
+                    ) if self.param('lease') else None
                 )
             ) if self.param('lease') is not None else None,
             cpu=otypes.Cpu(
@@ -1400,6 +1494,7 @@ class VmsModule(BaseModule):
                 ) for cp in self.param('custom_properties') if cp
             ] if self.param('custom_properties') is not None else None,
             initialization=self.get_initialization() if self.param('cloud_init_persist') else None,
+            snapshots=[otypes.Snapshot(id=snapshot.id)] if snapshot is not None else None,
         )
 
     def _get_export_domain_service(self):
@@ -1555,7 +1650,6 @@ class VmsModule(BaseModule):
         vm_service = self._service.service(entity.id)
         self._wait_for_UP(vm_service)
         self._attach_cd(vm_service.get())
-        self._migrate_vm(vm_service.get())
 
     def _attach_cd(self, entity):
         cd_iso = self.param('cd_iso')
@@ -1882,20 +1976,38 @@ class VmsModule(BaseModule):
                         boot_protocol=otypes.BootProtocol(
                             nic.pop('nic_boot_protocol').lower()
                         ) if nic.get('nic_boot_protocol') else None,
+                        ipv6_boot_protocol=otypes.BootProtocol(
+                            nic.pop('nic_boot_protocol_v6').lower()
+                        ) if nic.get('nic_boot_protocol_v6') else None,
                         name=nic.pop('nic_name', None),
                         on_boot=nic.pop('nic_on_boot', None),
                         ip=otypes.Ip(
                             address=nic.pop('nic_ip_address', None),
                             netmask=nic.pop('nic_netmask', None),
                             gateway=nic.pop('nic_gateway', None),
+                            version=otypes.IpVersion('v4')
                         ) if (
                             nic.get('nic_gateway') is not None or
                             nic.get('nic_netmask') is not None or
                             nic.get('nic_ip_address') is not None
                         ) else None,
+                        ipv6=otypes.Ip(
+                            address=nic.pop('nic_ip_address_v6', None),
+                            netmask=nic.pop('nic_netmask_v6', None),
+                            gateway=nic.pop('nic_gateway_v6', None),
+                            version=otypes.IpVersion('v6')
+                        ) if (
+                            nic.get('nic_gateway_v6') is not None or
+                            nic.get('nic_netmask_v6') is not None or
+                            nic.get('nic_ip_address_v6') is not None
+                        ) else None,
                     )
                     for nic in cloud_init_nics
                     if (
+                        nic.get('nic_boot_protocol_v6') is not None or
+                        nic.get('nic_ip_address_v6') is not None or
+                        nic.get('nic_gateway_v6') is not None or
+                        nic.get('nic_netmask_v6') is not None or
                         nic.get('nic_gateway') is not None or
                         nic.get('nic_netmask') is not None or
                         nic.get('nic_ip_address') is not None or
@@ -2264,6 +2376,8 @@ def main():
         force_migrate=dict(type='bool'),
         migrate=dict(type='bool', default=None),
         next_run=dict(type='bool'),
+        snapshot_name=dict(type='str'),
+        snapshot_vm=dict(type='str'),
     )
     module = AnsibleModule(
         argument_spec=argument_spec,
@@ -2271,7 +2385,8 @@ def main():
         required_one_of=[['id', 'name']],
         required_if=[
             ('state', 'registered', ['storage_domain']),
-        ]
+        ],
+        required_together=[['snapshot_name', 'snapshot_vm']]
     )
 
     check_sdk(module)
@@ -2372,6 +2487,8 @@ def main():
                         action_condition=lambda vm: vm.status == otypes.VmStatus.UP,
                         wait_condition=lambda vm: vm.status == otypes.VmStatus.UP,
                     )
+            # Allow migrate vm when state present.
+            vms_module._migrate_vm(vm)
             ret['changed'] = vms_module.changed
         elif state == 'stopped':
             if module.params['xen'] or module.params['kvm'] or module.params['vmware']:

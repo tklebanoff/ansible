@@ -84,6 +84,10 @@ ansible_net_python_version:
   description: The Python version Ansible controller is using
   returned: always
   type: str
+ansible_net_model:
+  description: The model name returned from the device
+  returned: always
+  type: str
 
 # hardware
 ansible_net_filesystems:
@@ -280,6 +284,7 @@ class Interfaces(FactsBase):
                 facts[intf] = list()
             fact = dict()
             fact['host'] = self.parse_lldp_host(entry)
+            fact['remote_description'] = self.parse_lldp_remote_desc(entry)
             fact['port'] = self.parse_lldp_port(entry)
             facts[intf].append(fact)
         return facts
@@ -348,6 +353,11 @@ class Interfaces(FactsBase):
 
     def parse_lldp_intf(self, data):
         match = re.search(r'^Local Interface: (.+)$', data, re.M)
+        if match:
+            return match.group(1)
+
+    def parse_lldp_remote_desc(self, data):
+        match = re.search(r'Port Description: (.+)$', data, re.M)
         if match:
             return match.group(1)
 

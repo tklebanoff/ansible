@@ -85,7 +85,7 @@ EXAMPLES = '''
     # If the file is JSON or binary, Ansible might modify it (because
     # it is first decoded and later re-encoded). Base64-encoding the
     # file directly after reading it prevents this to happen.
-    data: "{{ lookup('file', '/path/to/config/file') | base64 }}"
+    data: "{{ lookup('file', '/path/to/config/file') | b64encode }}"
     data_is_b64: true
     state: present
 
@@ -152,9 +152,10 @@ config_id:
 
 import base64
 import hashlib
+import traceback
 
 try:
-    from docker.errors import APIError
+    from docker.errors import DockerException, APIError
 except ImportError:
     # missing Docker SDK for Python handled in ansible.module_utils.docker.common
     pass
@@ -281,12 +282,15 @@ def main():
         min_docker_api_version='1.30',
     )
 
-    results = dict(
-        changed=False,
-    )
+    try:
+        results = dict(
+            changed=False,
+        )
 
-    ConfigManager(client, results)()
-    client.module.exit_json(**results)
+        ConfigManager(client, results)()
+        client.module.exit_json(**results)
+    except DockerException as e:
+        client.fail('An unexpected docker error occurred: {0}'.format(e), exception=traceback.format_exc())
 
 
 if __name__ == '__main__':

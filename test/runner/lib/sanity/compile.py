@@ -13,11 +13,15 @@ from lib.sanity import (
 
 from lib.util import (
     SubprocessError,
-    run_command,
     display,
     find_python,
     read_lines_without_comments,
     parse_to_list_of_dict,
+    INSTALL_ROOT,
+)
+
+from lib.util_common import (
+    run_command,
 )
 
 from lib.config import (
@@ -50,7 +54,7 @@ class CompileTest(SanityMultipleVersion):
         if not paths:
             return SanitySkipped(self.name, python_version=python_version)
 
-        cmd = [find_python(python_version), 'test/sanity/compile/compile.py']
+        cmd = [find_python(python_version), os.path.join(INSTALL_ROOT, 'test/sanity/compile/compile.py')]
 
         data = '\n'.join(paths)
 

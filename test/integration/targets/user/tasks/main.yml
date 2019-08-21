@@ -326,6 +326,8 @@
     state: present
     expires: 2529881062
   register: user_test_expires1
+  tags:
+    - timezone
 
 - name: Set user expiration again to ensure no change is made
   user:
@@ -333,6 +335,8 @@
     state: present
     expires: 2529881062
   register: user_test_expires2
+  tags:
+    - timezone
 
 - name: Ensure that account with expiration was created and did not change on subsequent run
   assert:
@@ -382,16 +386,31 @@
         state: present
         expires: 2529881062
       register: user_test_different_tz
+      tags:
+        - timezone
 
     - name: Ensure that no change was reported
       assert:
         that:
           - user_test_different_tz is not changed
+      tags:
+        - timezone
 
   always:
     - name: Restore original timezone - {{ original_timezone.diff.before.name }}
       timezone:
         name: "{{ original_timezone.diff.before.name }}"
+      when: original_timezone.diff.before.name != "n/a"
+      tags:
+        - timezone
+
+    - name: Restore original timezone when n/a
+      file:
+        path: /etc/sysconfig/clock
+        state: absent
+      when:
+        - original_timezone.diff.before.name == "n/a"
+        - "'/etc/sysconfig/clock' in original_timezone.msg"
       tags:
         - timezone
 
@@ -834,7 +853,7 @@
     state: absent
     remove: yes
     local: yes
-  register: local_user_test_3
+  register: local_user_test_remove_1
   tags:
     - user_test_local_mode
 
@@ -844,16 +863,68 @@
     state: absent
     remove: yes
     local: yes
+  register: local_user_test_remove_2
+  tags:
+    - user_test_local_mode
+
+- name: Create test group
+  group:
+    name: testgroup
+  tags:
+    - user_test_local_mode
+
+- name: Create local_ansibulluser with groups
+  user:
+    name: local_ansibulluser
+    state: present
+    local: yes
+    groups: testgroup
+  register: local_user_test_3
+  tags:
+    - user_test_local_mode
+
+- name: Create local_ansibulluser with groups again
+  user:
+    name: local_ansibulluser
+    state: present
+    local: yes
+    groups: testgroup
   register: local_user_test_4
   tags:
     - user_test_local_mode
 
-- name: Ensure local user accounts were created
+- name: Remove local_ansibulluser with groups
+  user:
+    name: local_ansibulluser
+    state: absent
+    remove: yes
+    local: yes
+    groups: testgroup
+  register: local_user_test_remove_3
+  tags:
+    - user_test_local_mode
+
+- name: Remove local_ansibulluser with groups again
+  user:
+    name: local_ansibulluser
+    state: absent
+    remove: yes
+    local: yes
+    groups: testgroup
+  register: local_user_test_remove_4
+  tags:
+    - user_test_local_mode
+
+- name: Ensure local user accounts were created and removed properly
   assert:
     that:
       - local_user_test_1 is changed
       - local_user_test_2 is not changed
       - local_user_test_3 is changed
       - local_user_test_4 is not changed
+      - local_user_test_remove_1 is changed
+      - local_user_test_remove_2 is not changed
+      - local_user_test_remove_3 is changed
+      - local_user_test_remove_4 is not changed
   tags:
     - user_test_local_mode

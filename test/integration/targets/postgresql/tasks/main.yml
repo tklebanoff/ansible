@@ -235,7 +235,7 @@
     - 'yes'
 
 - set_fact:
-    encryption_values: '{{ encryption_values }} + ["no"]'
+    encryption_values: '{{ encryption_values + ["no"]}}'
   when: postgres_version_resp.stdout is version('10', '<=')
 
 - include: test_password.yml
@@ -794,6 +794,16 @@
     that:
       - "result.stdout_lines[-1] == '(0 rows)'"
 
+# Test ssl.
+# Restricted using Debian family because of there are errors on other distributions
+# that not related with PostgreSQL or psycopg2 SSL support.
+# The tests' key point is to be sure that ssl options work in general
+- include: ssl.yml
+  when: ansible_os_family == 'Debian' and postgres_version_resp.stdout is version('9.4', '>=')
+
+# Test postgresql_user module
+- import_tasks: postgresql_user.yml
+
 # Test postgresql_set
 - include: postgresql_set.yml
   when: postgres_version_resp.stdout is version('9.4', '>=')
@@ -813,6 +823,9 @@
 # Test postgresql_tablespace module
 - include: postgresql_tablespace.yml
 
+# Test postgresql_db module, specific options:
+- include: postgresql_db.yml
+
 # Test postgresql_privs
 - include: postgresql_privs.yml
 
@@ -823,6 +836,14 @@
 - include: test_target_role.yml
   when: postgres_version_resp.stdout is version('9.1', '>=')
 
+# Test postgresql_copy module
+- include: postgresql_copy.yml
+  when: postgres_version_resp.stdout is version('9.4', '>=')
+
+# Test postgresql_sequence module
+- include: postgresql_sequence.yml
+  when: postgres_version_resp.stdout is version('9.0', '>=')
+
 # Test postgresql_ext.
 # pg_extension system view is available from PG 9.1.
 # The tests are restricted by Fedora because there will be errors related with
@@ -832,6 +853,9 @@
 # not specific distributions.
 - include: postgresql_ext.yml
   when: postgres_version_resp.stdout is version('9.1', '>=') and ansible_distribution == 'Fedora'
+
+- include: postgresql_ext_version_opt.yml
+  when: ansible_distribution == 'Ubuntu'
 
 # Test postgresql_slot module.
 # Physical replication slots are available from PostgreSQL 9.4
@@ -877,6 +901,7 @@
 # postgres_pg_hba module checks
 # ============================================================
 - include: postgresql_pg_hba.yml
+
 #
 # Cleanup
 #

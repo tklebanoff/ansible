@@ -170,6 +170,7 @@ def parse_args():
                         action='store_true',
                         help='run ansible commands in debug mode')
 
+    # noinspection PyTypeChecker
     common.add_argument('--truncate',
                         dest='truncate',
                         metavar='COLUMNS',
@@ -181,6 +182,10 @@ def parse_args():
                         dest='redact',
                         action='store_true',
                         help='redact sensitive values in output')
+
+    common.add_argument('--check-python',
+                        choices=SUPPORTED_PYTHON_VERSIONS,
+                        help=argparse.SUPPRESS)
 
     test = argparse.ArgumentParser(add_help=False, parents=[common])
 
@@ -523,6 +528,7 @@ def parse_args():
                      action='store_true',
                      help='dump environment to disk')
 
+    # noinspection PyTypeChecker
     env.add_argument('--timeout',
                      type=int,
                      metavar='MINUTES',
@@ -745,6 +751,7 @@ def add_extra_docker_options(parser, integration=True):
                         action='store_true',
                         help='run docker container in privileged mode')
 
+    # noinspection PyTypeChecker
     docker.add_argument('--docker-memory',
                         help='memory limit for docker in bytes', type=int)
 

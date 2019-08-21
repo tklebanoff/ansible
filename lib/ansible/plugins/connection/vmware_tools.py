@@ -8,9 +8,8 @@ __metaclass__ = type
 import re
 from os.path import exists, getsize
 from socket import gaierror
-from ssl import SSLEOFError, SSLError
+from ssl import SSLError
 from time import sleep
-import urllib3
 import traceback
 
 REQUESTS_IMP_ERR = None
@@ -20,6 +19,16 @@ try:
 except ImportError:
     REQUESTS_IMP_ERR = traceback.format_exc()
     HAS_REQUESTS = False
+
+try:
+    from requests.packages import urllib3
+    HAS_URLLIB3 = True
+except ImportError:
+    try:
+        import urllib3
+        HAS_URLLIB3 = True
+    except ImportError:
+        HAS_URLLIB3 = False
 
 from ansible.errors import AnsibleError, AnsibleFileNotFound, AnsibleConnectionFailure
 from ansible.module_utils._text import to_bytes, to_native
@@ -102,13 +111,6 @@ DOCUMENTATION = """
           - name: ansible_vmware_validate_certs
         default: True
         type: bool
-      silence_tls_warnings:
-        description:
-          - Don't output warnings about insecure connections.
-        vars:
-          - name: ansible_vmware_silence_tls_warnings
-        default: True
-        type: bool
       vm_path:
         description:
           - VM path absolute to the connection.
@@ -173,7 +175,6 @@ ansible_vmware_host: vcenter.example.com
 ansible_vmware_user: administrator@vsphere.local
 ansible_vmware_password: Secr3tP4ssw0rd!12
 ansible_vmware_validate_certs: no  # default is yes
-ansible_vmware_silence_tls_warnings: yes # default is yes
 
 # vCenter Connection VM Path Example
 ansible_vmware_guest_path: DATACENTER/vm/FOLDER/{{ inventory_hostname }}
@@ -290,7 +291,7 @@ class Connection(ConnectionBase):
         if self.validate_certs:
             connect = SmartConnect
         else:
-            if self.get_option("silence_tls_warnings"):
+            if HAS_URLLIB3:
                 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
             connect = SmartConnectNoSSL
 
@@ -298,7 +299,7 @@ class Connection(ConnectionBase):
             self._si = connect(**connection_kwargs)
         except SSLError:
             raise AnsibleError("SSL Error: Certificate verification failed.")
-        except (gaierror, SSLEOFError):
+        except (gaierror):
             raise AnsibleError("Connection Error: Unable to connect to '%s'." % to_native(connection_kwargs["host"]))
         except vim.fault.InvalidLogin as e:
             raise AnsibleError("Connection Login Error: %s" % to_native(e.msg))

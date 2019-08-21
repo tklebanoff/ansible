@@ -51,6 +51,14 @@ options:
     description:
     - Name of the topic.
     required: true
+  kms_key_name:
+    description:
+    - The resource name of the Cloud KMS CryptoKey to be used to protect access to
+      messsages published on this topic. Your project's PubSub service account (`service-{{PROJECT_NUMBER}}@gcp-sa-pubsub.iam.gserviceaccount.com`)
+      must have `roles/cloudkms.cryptoKeyEncrypterDecrypter` to use this feature.
+    - The expected format is `projects/*/locations/*/keyRings/*/cryptoKeys/*` .
+    required: false
+    version_added: 2.9
   labels:
     description:
     - A set of key/value label pairs to assign to this Topic.
@@ -78,6 +86,14 @@ name:
   - Name of the topic.
   returned: success
   type: str
+kmsKeyName:
+  description:
+  - The resource name of the Cloud KMS CryptoKey to be used to protect access to messsages
+    published on this topic. Your project's PubSub service account (`service-{{PROJECT_NUMBER}}@gcp-sa-pubsub.iam.gserviceaccount.com`)
+    must have `roles/cloudkms.cryptoKeyEncrypterDecrypter` to use this feature.
+  - The expected format is `projects/*/locations/*/keyRings/*/cryptoKeys/*` .
+  returned: success
+  type: str
 labels:
   description:
   - A set of key/value label pairs to assign to this Topic.
@@ -102,7 +118,10 @@ def main():
 
     module = GcpModule(
         argument_spec=dict(
-            state=dict(default='present', choices=['present', 'absent'], type='str'), name=dict(required=True, type='str'), labels=dict(type='dict')
+            state=dict(default='present', choices=['present', 'absent'], type='str'),
+            name=dict(required=True, type='str'),
+            kms_key_name=dict(type='str'),
+            labels=dict(type='dict'),
         )
     )
 
@@ -117,7 +136,7 @@ def main():
     if fetch:
         if state == 'present':
             if is_different(module, fetch):
-                update(module, self_link(module))
+                update(module, self_link(module), fetch)
                 fetch = fetch_resource(module, self_link(module))
                 changed = True
         else:
@@ -141,8 +160,19 @@ def create(module, link):
     return return_if_object(module, auth.put(link, resource_to_request(module)))
 
 
-def update(module, link):
-    module.fail_json(msg="Topic cannot be edited")
+def update(module, link, fetch):
+    auth = GcpSession(module, 'pubsub')
+    params = {'updateMask': updateMask(resource_to_request(module), response_to_hash(module, fetch))}
+    request = resource_to_request(module)
+    del request['name']
+    return return_if_object(module, auth.patch(link, request, params=params))
+
+
+def updateMask(request, response):
+    update_mask = []
+    if request.get('labels') != response.get('labels'):
+        update_mask.append('labels')
+    return ','.join(update_mask)
 
 
 def delete(module, link):
@@ -151,7 +181,7 @@ def delete(module, link):
 
 
 def resource_to_request(module):
-    request = {u'name': module.params.get('name'), u'labels': module.params.get('labels')}
+    request = {u'name': module.params.get('name'), u'kmsKeyName': module.params.get('kms_key_name'), u'labels': module.params.get('labels')}
     request = encode_request(request, module)
     return_vals = {}
     for k, v in request.items():
@@ -219,7 +249,7 @@ def is_different(module, response):
 # Remove unnecessary properties from the response.
 # This is for doing comparisons with Ansible's current parameters.
 def response_to_hash(module, response):
-    return {u'name': response.get(u'name'), u'labels': response.get(u'labels')}
+    return {u'name': module.params.get('name'), u'kmsKeyName': module.params.get('kms_key_name'), u'labels': response.get(u'labels')}
 
 
 def decode_request(response, module):

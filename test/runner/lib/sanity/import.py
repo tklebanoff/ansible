@@ -13,14 +13,17 @@ from lib.sanity import (
 
 from lib.util import (
     SubprocessError,
-    run_command,
-    intercept_command,
     remove_tree,
     display,
     find_python,
     read_lines_without_comments,
     parse_to_list_of_dict,
     make_dirs,
+)
+
+from lib.util_common import (
+    intercept_command,
+    run_command,
 )
 
 from lib.ansible_util import (
@@ -46,7 +49,8 @@ class ImportTest(SanityMultipleVersion):
         :rtype: TestResult
         """
         skip_file = 'test/sanity/import/skip.txt'
-        skip_paths = read_lines_without_comments(skip_file, remove_blank_lines=True)
+        skip_paths = read_lines_without_comments(skip_file, remove_blank_lines=True, optional=True)
+
         skip_paths_set = set(skip_paths)
 
         paths = sorted(

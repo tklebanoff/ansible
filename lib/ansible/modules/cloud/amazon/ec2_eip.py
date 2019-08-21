@@ -287,7 +287,7 @@ def release_address(ec2, address, check_mode):
     # If we're in check mode, nothing else to do
     if not check_mode:
         if not address.release():
-            EIPException('release failed')
+            raise EIPException('release failed')
 
     return {'changed': True}
 
@@ -388,9 +388,9 @@ def main():
     module = AnsibleModule(
         argument_spec=argument_spec,
         supports_check_mode=True,
-        required_together=[
-            ['device_id', 'private_ip_address'],
-        ],
+        required_by={
+            'private_ip_address': ['device_id'],
+        },
     )
 
     if not HAS_BOTO:

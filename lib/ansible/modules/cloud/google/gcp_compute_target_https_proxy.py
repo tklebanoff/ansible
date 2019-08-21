@@ -68,12 +68,9 @@ options:
       one of NONE, ENABLE, or DISABLE. If NONE is specified, uses the QUIC policy
       with no user overrides, which is equivalent to DISABLE. Not specifying this
       field is equivalent to specifying NONE.
+    - 'Some valid choices include: "NONE", "ENABLE", "DISABLE"'
     required: false
     version_added: 2.7
-    choices:
-    - NONE
-    - ENABLE
-    - DISABLE
   ssl_certificates:
     description:
     - A list of SslCertificate resources that are used to authenticate connections
@@ -136,7 +133,7 @@ EXAMPLES = '''
   gcp_compute_backend_service:
     name: backendservice-targethttpsproxy
     backends:
-    - group: "{{ instancegroup }}"
+    - group: "{{ instancegroup.selfLink }}"
     health_checks:
     - "{{ healthcheck.selfLink }}"
     enable_cdn: 'true'
@@ -266,7 +263,7 @@ def main():
             state=dict(default='present', choices=['present', 'absent'], type='str'),
             description=dict(type='str'),
             name=dict(required=True, type='str'),
-            quic_override=dict(type='str', choices=['NONE', 'ENABLE', 'DISABLE']),
+            quic_override=dict(type='str'),
             ssl_certificates=dict(required=True, type='list', elements='dict'),
             ssl_policy=dict(type='dict'),
             url_map=dict(required=True, type='dict'),

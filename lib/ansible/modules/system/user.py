@@ -60,12 +60,14 @@ options:
               C(null), or C(~), the user is removed from all groups except the
               primary group. (C(~) means C(null) in YAML)
             - Before Ansible 2.3, the only input format allowed was a comma separated string.
+            - Has no effect when C(local) is C(True)
         type: list
     append:
         description:
             - If C(yes), add the user to the groups specified in C(groups).
             - If C(no), user will only be added to the groups specified in C(groups),
               removing them from all other groups.
+            - Has no effect when C(local) is C(True)
         type: bool
         default: no
     shell:
@@ -91,7 +93,7 @@ options:
             - Optionally set the user's password to this crypted value.
             - On macOS systems, this value has to be cleartext. Beware of security issues.
             - To create a disabled account on Linux systems, set this to C('!') or C('*').
-            - See U(https://docs.ansible.com/ansible/faq.html#how-do-i-generate-crypted-passwords-for-the-user-module)
+            - See U(https://docs.ansible.com/ansible/faq.html#how-do-i-generate-encrypted-passwords-for-the-user-module)
               for details on various ways to generate these password values.
         type: str
     state:
@@ -616,7 +618,7 @@ class User(object):
             else:
                 cmd.append('-N')
 
-        if self.groups is not None and len(self.groups):
+        if self.groups is not None and not self.local and len(self.groups):
             groups = self.get_groups_set()
             cmd.append('-G')
             cmd.append(','.join(groups))
@@ -737,7 +739,7 @@ class User(object):
                     else:
                         groups_need_mod = True
 
-            if groups_need_mod:
+            if groups_need_mod and not self.local:
                 if self.append and not has_append:
                     cmd.append('-A')
                     cmd.append(','.join(group_diff))
@@ -907,13 +909,19 @@ class User(object):
         if not self.user_exists():
             return passwd, expires
         elif self.SHADOWFILE:
-            # Read shadow file for user's encrypted password string
-            if os.path.exists(self.SHADOWFILE) and os.access(self.SHADOWFILE, os.R_OK):
-                with open(self.SHADOWFILE, 'r') as f:
-                    for line in f:
-                        if line.startswith('%s:' % self.name):
-                            passwd = line.split(':')[1]
-                            expires = line.split(':')[self.SHADOWFILE_EXPIRE_INDEX] or -1
+            passwd, expires = self.parse_shadow_file()
+
+        return passwd, expires
+
+    def parse_shadow_file(self):
+        passwd = ''
+        expires = ''
+        if os.path.exists(self.SHADOWFILE) and os.access(self.SHADOWFILE, os.R_OK):
+            with open(self.SHADOWFILE, 'r') as f:
+                for line in f:
+                    if line.startswith('%s:' % self.name):
+                        passwd = line.split(':')[1]
+                        expires = line.split(':')[self.SHADOWFILE_EXPIRE_INDEX] or -1
         return passwd, expires
 
     def get_ssh_key_path(self):
@@ -2326,6 +2334,7 @@ class AIX(User):
       - create_user()
       - remove_user()
       - modify_user()
+      - parse_shadow_file()
     """
 
     platform = 'AIX'
@@ -2466,6 +2475,50 @@ class AIX(User):
             return (rc, out + out2, err + err2)
         else:
             return (rc2, out + out2, err + err2)
+
+    def parse_shadow_file(self):
+        """Example AIX shadowfile data:
+        nobody:
+                password = *
+
+        operator1:
+                password = {ssha512}06$xxxxxxxxxxxx....
+                lastupdate = 1549558094
+
+        test1:
+                password = *
+                lastupdate = 1553695126
+
+        """
+
+        b_name = to_bytes(self.name)
+        if os.path.exists(self.SHADOWFILE) and os.access(self.SHADOWFILE, os.R_OK):
+            with open(self.SHADOWFILE, 'rb') as bf:
+                b_lines = bf.readlines()
+
+            b_passwd_line = b''
+            b_expires_line = b''
+            for index, b_line in enumerate(b_lines):
+                # Get password and lastupdate lines which come after the username
+                if b_line.startswith(b'%s:' % b_name):
+                    b_passwd_line = b_lines[index + 1]
+                    b_expires_line = b_lines[index + 2]
+                    break
+
+            # Sanity check the lines because sometimes both are not present
+            if b' = ' in b_passwd_line:
+                b_passwd = b_passwd_line.split(b' = ', 1)[-1].strip()
+            else:
+                b_passwd = b''
+
+            if b' = ' in b_expires_line:
+                b_expires = b_expires_line.split(b' = ', 1)[-1].strip()
+            else:
+                b_expires = b''
+
+        passwd = to_native(b_passwd)
+        expires = to_native(b_expires) or -1
+        return passwd, expires
 
 
 class HPUX(User):

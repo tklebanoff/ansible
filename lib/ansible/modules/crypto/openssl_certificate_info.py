@@ -45,7 +45,7 @@ options:
             - Valid format is C([+-]timespec | ASN.1 TIME) where timespec can be an integer
               + C([w | d | h | m | s]) (e.g. C(+32w1d2h), and ASN.1 TIME (i.e. pattern C(YYYYMMDDHHMMSSZ)).
               Note that all timestamps will be treated as being in UTC.
-
+        type: dict
     select_crypto_backend:
         description:
             - Determines which crypto backend to use.
@@ -235,6 +235,7 @@ from ansible.module_utils import crypto as crypto_utils
 from ansible.module_utils.basic import AnsibleModule, missing_required_lib
 from ansible.module_utils.six import string_types
 from ansible.module_utils._text import to_native, to_text, to_bytes
+from ansible.module_utils.compat import ipaddress as compat_ipaddress
 
 MINIMAL_CRYPTOGRAPHY_VERSION = '1.6'
 MINIMAL_PYOPENSSL_VERSION = '0.15'
@@ -243,7 +244,6 @@ PYOPENSSL_IMP_ERR = None
 try:
     import OpenSSL
     from OpenSSL import crypto
-    import ipaddress
     PYOPENSSL_VERSION = LooseVersion(OpenSSL.__version__)
     if OpenSSL.SSL.OPENSSL_VERSION_NUMBER >= 0x10100000:
         # OpenSSL 1.1.0 or newer
@@ -609,7 +609,7 @@ class CertificateInfoPyOpenSSL(CertificateInfo):
         if san.startswith('IP Address:'):
             san = 'IP:' + san[len('IP Address:'):]
         if san.startswith('IP:'):
-            ip = ipaddress.ip_address(san[3:])
+            ip = compat_ipaddress.ip_address(san[3:])
             san = 'IP:{0}'.format(ip.compressed)
         return san
 
@@ -697,7 +697,8 @@ def main():
 
         if backend == 'pyopenssl':
             if not PYOPENSSL_FOUND:
-                module.fail_json(msg=missing_required_lib('pyOpenSSL'), exception=PYOPENSSL_IMP_ERR)
+                module.fail_json(msg=missing_required_lib('pyOpenSSL >= {0}'.format(MINIMAL_PYOPENSSL_VERSION)),
+                                 exception=PYOPENSSL_IMP_ERR)
             try:
                 getattr(crypto.X509Req, 'get_extensions')
             except AttributeError:
@@ -706,7 +707,8 @@ def main():
             certificate = CertificateInfoPyOpenSSL(module)
         elif backend == 'cryptography':
             if not CRYPTOGRAPHY_FOUND:
-                module.fail_json(msg=missing_required_lib('cryptography'), exception=CRYPTOGRAPHY_IMP_ERR)
+                module.fail_json(msg=missing_required_lib('cryptography >= {0}'.format(MINIMAL_CRYPTOGRAPHY_VERSION)),
+                                 exception=CRYPTOGRAPHY_IMP_ERR)
             certificate = CertificateInfoCryptography(module)
 
         result = certificate.get_info()

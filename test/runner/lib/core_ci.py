@@ -18,10 +18,13 @@ from lib.http import (
 
 from lib.util import (
     ApplicationError,
-    run_command,
     make_dirs,
     display,
     is_shippable,
+)
+
+from lib.util_common import (
+    run_command,
 )
 
 from lib.config import (
@@ -79,6 +82,9 @@ class AnsibleCoreCI(object):
             parallels=(
                 'osx',
             ),
+            vmware=(
+                'vmware'
+            ),
         )
 
         if provider:
@@ -131,6 +137,11 @@ class AnsibleCoreCI(object):
 
             self.ssh_key = SshKey(args)
             self.port = None
+        elif self.provider == 'vmware':
+            self.ssh_key = SshKey(args)
+            self.endpoints = ['https://access.ws.testing.ansible.com']
+            self.max_threshold = 1
+
         else:
             raise ApplicationError('Unsupported platform: %s' % platform)
 
@@ -301,7 +312,7 @@ class AnsibleCoreCI(object):
             )
 
             if self.connection.password:
-                display.sensitive.add(self.connection.password)
+                display.sensitive.add(str(self.connection.password))
 
         status = 'running' if self.connection.running else 'starting'
 
@@ -453,7 +464,7 @@ class AnsibleCoreCI(object):
         :type config: dict[str, str]
         :rtype: bool
         """
-        self.instance_id = config['instance_id']
+        self.instance_id = str(config['instance_id'])
         self.endpoint = config['endpoint']
         self.started = True
 

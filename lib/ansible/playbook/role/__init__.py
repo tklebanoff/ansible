@@ -26,7 +26,6 @@ from ansible.module_utils.six import iteritems, binary_type, text_type
 from ansible.module_utils.common._collections_compat import Container, Mapping, Set, Sequence
 from ansible.playbook.attribute import FieldAttribute
 from ansible.playbook.base import Base
-from ansible.playbook.become import Become
 from ansible.playbook.collectionsearch import CollectionSearch
 from ansible.playbook.conditional import Conditional
 from ansible.playbook.helpers import load_list_of_blocks
@@ -69,7 +68,7 @@ def hash_params(params):
                 new_params = set()
                 for k, v in params.items():
                     # Hash each entry individually
-                    new_params.update((k, hash_params(v)))
+                    new_params.add((k, hash_params(v)))
                 new_params = frozenset(new_params)
 
         elif isinstance(params, (Set, Sequence)):
@@ -80,7 +79,7 @@ def hash_params(params):
                 new_params = set()
                 for v in params:
                     # Hash each entry individually
-                    new_params.update(hash_params(v))
+                    new_params.add(hash_params(v))
                 new_params = frozenset(new_params)
         else:
             # This is just a guess.
@@ -92,7 +91,7 @@ def hash_params(params):
     return frozenset((params,))
 
 
-class Role(Base, Become, Conditional, Taggable, CollectionSearch):
+class Role(Base, Conditional, Taggable, CollectionSearch):
 
     _delegate_to = FieldAttribute(isa='string')
     _delegate_facts = FieldAttribute(isa='bool')
